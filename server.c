@@ -5,7 +5,6 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <sys/stat.h>
-//#include <mime.h>
 #include "server.h"
 
 int request_count = 0;
@@ -72,40 +71,78 @@ void send_file_response(int client_socket, const char *file_path) {
     struct stat file_stat;
     stat(file_path, &file_stat);
 
- 
-    char *mime_type = "application/octet-stream"; 
-    const char *ext = strrchr(file_path, '.'); 
-    if (ext) {
-        if (strcmp(ext, ".png") == 0) {
-            mime_type = "image/png";
-        } else if (strcmp(ext, ".jpg") == 0 || strcmp(ext, ".jpeg") == 0) {
-            mime_type = "image/jpeg";
-        } else if (strcmp(ext, ".gif") == 0) {
-            mime_type = "image/gif";
-        } else if (strcmp(ext, ".html") == 0) {
-            mime_type = "text/html";
-        } else if (strcmp(ext, ".css") == 0) {
-            mime_type = "text/css";
-        } else if (strcmp(ext, ".js") == 0) {
-            mime_type = "application/javascript";
-        }
+    // Use "application/octet-stream" to prompt the browser to download the file
+    const char *mime_type = "application/octet-stream";
 
-    }
+    // Extract the file name for the Content-Disposition header
+    const char *filename = strrchr(file_path, '/');
+    filename = filename ? filename + 1 : "downloaded_file"; // Default name if '/' is not found
 
+    char response_header[BUFFER_SIZE];
+    snprintf(response_header, sizeof(response_header),
+             "HTTP/1.1 200 OK\r\n"
+             "Content-Type: %s\r\n"
+             "Content-Length: %ld\r\n"
+             "Content-Disposition: attachment; filename=\"%s\"\r\n\r\n",
+             mime_type, file_stat.st_size, filename);
 
-    char response[BUFFER_SIZE];
-    snprintf(response, sizeof(response), "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %ld\r\n\r\n", mime_type, file_stat.st_size);
-    send(client_socket, response, strlen(response), 0);
+    send(client_socket, response_header, strlen(response_header), 0);
 
-    int sent = strlen(response);
+    int sent = strlen(response_header);
+    char buffer[BUFFER_SIZE];
+
+    // Send the file data in chunks
     while (!feof(file)) {
-        int bytes_read = fread(response, 1, sizeof(response), file);
-        send(client_socket, response, bytes_read, 0);
+        int bytes_read = fread(buffer, 1, sizeof(buffer), file);
+        send(client_socket, buffer, bytes_read, 0);
         sent += bytes_read;
     }
+
     update_stats(0, sent);
     fclose(file);
 }
+/*
+void send_file_response(int client_socket, const char *file_path) {
+    FILE *file = fopen(file_path, "rb");
+    if (!file) {
+        send_response(client_socket, "404 Not Found", "text/html", "<h1>404 Not Found</h1>");
+        return;
+    }
+
+    struct stat file_stat;
+    stat(file_path, &file_stat);
+
+    // Use "application/octet-stream" to prompt the browser to download the file
+    const char *mime_type = "application/octet-stream";
+
+    // Extract the file name for the Content-Disposition header
+    const char *filename = strrchr(file_path, '/');
+    filename = filename ? filename + 1 : "downloaded_file"; // Default name if '/' is not found
+
+    char response_header[BUFFER_SIZE];
+    snprintf(response_header, sizeof(response_header),
+             "HTTP/1.1 200 OK\r\n"
+             "Content-Type: %s\r\n"
+             "Content-Length: %ld\r\n"
+             "Content-Disposition: attachment; filename=\"%s\"\r\n\r\n",
+             mime_type, file_stat.st_size, filename);
+
+    send(client_socket, response_header, strlen(response_header), 0);
+
+    int sent = strlen(response_header);
+    char buffer[BUFFER_SIZE];
+
+    // Send the file data in chunks
+    while (!feof(file)) {
+        int bytes_read = fread(buffer, 1, sizeof(buffer), file);
+        send(client_socket, buffer, bytes_read, 0);
+        sent += bytes_read;
+    }
+
+    update_stats(0, sent);
+    fclose(file);
+}
+*/
 
 
 
